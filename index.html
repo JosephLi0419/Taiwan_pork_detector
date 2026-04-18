@@ -301,9 +301,15 @@
   .pipeline-header {
     display: flex;
     justify-content: space-between;
-    align-items: baseline;
+    align-items: center;
     margin-bottom: 16px;
+    cursor: pointer;
+    user-select: none;
+    padding: 6px 2px;
+    border-radius: 8px;
+    transition: background 0.2s;
   }
+  .pipeline-header:active { background: rgba(244, 236, 219, 0.04); }
   .pipeline-header h3 {
     font-family: var(--display);
     font-style: italic;
@@ -311,12 +317,28 @@
     margin: 0;
     font-weight: 700;
   }
-  .pipeline-header span {
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: 0.2em;
+  .pipeline-chevron {
+    width: 22px;
+    height: 22px;
+    display: grid;
+    place-items: center;
     color: var(--ink-dim);
-    text-transform: uppercase;
+    transition: transform 0.25s ease;
+  }
+  .pipeline-chevron svg {
+    width: 14px;
+    height: 14px;
+  }
+  .pipeline.open .pipeline-chevron {
+    transform: rotate(180deg);
+  }
+  .pipeline-body {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.35s ease;
+  }
+  .pipeline.open .pipeline-body {
+    max-height: 4000px;
   }
 
   .node {
@@ -724,27 +746,33 @@
   </section>
 
   <section class="pipeline" id="pipeline">
-    <div class="pipeline-header">
+    <div class="pipeline-header" id="pipelineHeader">
       <h3>Analysis Flow</h3>
-      <span>graph pipeline</span>
+      <div class="pipeline-chevron">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </div>
     </div>
 
-    <div class="node" id="node1" data-num="01">
-      <h4 class="node-title">辨識成分</h4>
-      <div class="node-status">等待中</div>
-      <div class="node-result" id="node1-result"></div>
-    </div>
+    <div class="pipeline-body">
+      <div class="node" id="node1" data-num="01">
+        <h4 class="node-title">辨識成分</h4>
+        <div class="node-status">等待中</div>
+        <div class="node-result" id="node1-result"></div>
+      </div>
 
-    <div class="node" id="node2" data-num="02">
-      <h4 class="node-title">查核所在位置疫區</h4>
-      <div class="node-status">等待中</div>
-      <div class="node-result" id="node2-result"></div>
-    </div>
+      <div class="node" id="node2" data-num="02">
+        <h4 class="node-title">查核所在位置疫區</h4>
+        <div class="node-status">等待中</div>
+        <div class="node-result" id="node2-result"></div>
+      </div>
 
-    <div class="node" id="node4" data-num="03">
-      <h4 class="node-title">檢測豬肉成分</h4>
-      <div class="node-status">等待中</div>
-      <div class="node-result" id="node4-result"></div>
+      <div class="node" id="node4" data-num="03">
+        <h4 class="node-title">檢測豬肉成分</h4>
+        <div class="node-status">等待中</div>
+        <div class="node-result" id="node4-result"></div>
+      </div>
     </div>
   </section>
 
@@ -1043,8 +1071,15 @@ function resetPipeline() {
     setNode(i, "pending", "等待中", "");
   }
   $("pipeline").classList.add("active");
+  // 每次分析時預設收起
+  $("pipeline").classList.remove("open");
   $("verdict").classList.remove("active");
 }
+
+// Pipeline header 點擊可展開/收起
+$("pipelineHeader").onclick = () => {
+  $("pipeline").classList.toggle("open");
+};
 
 /* ===== API CALLS ===== */
 
