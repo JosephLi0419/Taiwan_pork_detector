@@ -996,12 +996,14 @@ function readFile(file) {
 
 async function handleFile(file) {
   if (!file) return;
-  // 壓縮以控制 token 用量
   const dataUrl = await readFile(file);
-  const compressed = await compressImage(dataUrl);
-  state.imageBase64 = compressed.base64;
+  // 前端預覽用：較大、較高品質（視覺清晰）
+  const previewImg = await compressImage(dataUrl, 1280, 0.9);
+  preview.src = previewImg.dataUrl;
+  // 送 AI 的版本：較小、較低品質（加速推理，降低 token）
+  const aiImg = await compressImage(dataUrl, 800, 0.75);
+  state.imageBase64 = aiImg.base64;
   state.imageMime = "image/jpeg";
-  preview.src = compressed.dataUrl;
   captureCard.classList.add("has-image");
   btnAnalyze.disabled = false;
   // 重置結果
@@ -1010,7 +1012,7 @@ async function handleFile(file) {
   hideAlert();
 }
 
-function compressImage(dataUrl, maxSize = 1280, quality = 0.85) {
+function compressImage(dataUrl, maxSize, quality) {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
@@ -1097,7 +1099,7 @@ async function callOpenAI(messages, wantJson = true) {
   if (wantJson) body.response_format = { type: "json_object" };
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 60000);
+  const timer = setTimeout(() => controller.abort(), 90000);
 
   let res;
   try {
@@ -1112,7 +1114,7 @@ async function callOpenAI(messages, wantJson = true) {
     });
   } catch (e) {
     clearTimeout(timer);
-    if (e.name === "AbortError") throw new Error("等待超過 60 秒，請求已中止");
+    if (e.name === "AbortError") throw new Error("等待超過 90 秒，請求已中止");
     throw e;
   }
   clearTimeout(timer);
@@ -1161,9 +1163,9 @@ async function callGemini(parts, schema = null) {
     body.generationConfig.responseSchema = schema;
   }
 
-  // Timeout 60 秒
+  // Timeout 90 秒
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 60000);
+  const timer = setTimeout(() => controller.abort(), 90000);
 
   let res;
   try {
@@ -1179,7 +1181,7 @@ async function callGemini(parts, schema = null) {
       const hint = isGemmaModel(model)
         ? "（Gemma 4 在 Gemini API 免費版速度不穩，建議改用 gemini-2.5-flash）"
         : "（可能網路問題或模型過載）";
-      throw new Error("等待超過 60 秒，請求已中止 " + hint);
+      throw new Error("等待超過 90 秒，請求已中止 " + hint);
     }
     throw e;
   }
@@ -1321,14 +1323,17 @@ btnAnalyze.onclick = async () => {
   let extracted, translated, zoneInfo, porkInfo;
 
   // ===== NODE 1: 擷取 =====
-  setNode(1, "running", "AI 辨識中... 0s");
+  setNode(1, "running", "0s");
   let elapsed = 0;
   const node1Timer = setInterval(() => {
     elapsed++;
-    const hint = elapsed > 40 ? "（建議改用 gemini-2.5-flash）"
-               : elapsed > 20 ? "（模型處理中，請稍候）"
-               : "";
-    setNode(1, "running", `AI 辨識中... ${elapsed}s ${hint}`);
+    if (elapsed >= 90) {
+      clearInterval(node1Timer);
+      setNode(1, "error", "失敗", "等待超過 90 秒，請求已中止");
+      btnAnalyze.disabled = false;
+      return;
+    }
+    setNode(1, "running", `${elapsed}s`);
   }, 1000);
   try {
     extracted = await extractFromImage();
@@ -1339,7 +1344,7 @@ btnAnalyze.onclick = async () => {
       <strong>判讀來源：</strong>${escapeHtml(extracted.origin_source || "-")}<br>
       <strong>信心度：</strong>${escapeHtml(extracted.confidence || "-")}
     `;
-    setNode(1, "done", `完成 (${elapsed}s)`, rowsHtml);
+    setNode(1, "done", `完成 ${elapsed}s`, rowsHtml);
   } catch (e) {
     clearInterval(node1Timer);
     setNode(1, "error", "失敗", escapeHtml(e.message));
