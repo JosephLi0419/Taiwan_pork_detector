@@ -2,7 +2,7 @@
 
 > 拍下食品包裝，AI 自動判讀產地是否為台灣認定的非洲豬瘟疫區，並將成分翻譯成繁體中文、標記豬肉來源。
 
-一個單檔 HTML 的網頁應用，專為 iPhone Safari 設計。開啟相機拍食品外包裝，透過 OpenAI 或 Google Gemma 的視覺模型進行四階段分析。
+一個單檔 HTML 的網頁應用，專為 iPhone 設計。開啟相機拍食品外包裝，透過 OpenAI 或 Google 的視覺模型進行四階段分析。
 
 🔗 **線上使用**：[https://josephli0419.github.io/Taiwan_pork_detector/](https://josephli0419.github.io/Taiwan_pork_detector/)
 
