@@ -730,7 +730,7 @@
     </div>
 
     <div class="node" id="node1" data-num="01">
-      <h4 class="node-title">擷取產品資訊</h4>
+      <h4 class="node-title">辨識成分</h4>
       <div class="node-status">等待中</div>
       <div class="node-result" id="node1-result"></div>
     </div>
@@ -741,13 +741,7 @@
       <div class="node-result" id="node2-result"></div>
     </div>
 
-    <div class="node" id="node3" data-num="03">
-      <h4 class="node-title">顯示成分</h4>
-      <div class="node-status">等待中</div>
-      <div class="node-result" id="node3-result"></div>
-    </div>
-
-    <div class="node" id="node4" data-num="04">
+    <div class="node" id="node4" data-num="03">
       <h4 class="node-title">檢測豬肉成分</h4>
       <div class="node-status">等待中</div>
       <div class="node-result" id="node4-result"></div>
@@ -1045,7 +1039,7 @@ function setNode(id, status, statusText, resultHtml) {
 }
 
 function resetPipeline() {
-  for (let i = 1; i <= 4; i++) {
+  for (const i of [1, 2, 4]) {
     setNode(i, "pending", "等待中", "");
   }
   $("pipeline").classList.add("active");
@@ -1339,13 +1333,11 @@ btnAnalyze.onclick = async () => {
   try {
     extracted = await extractFromImage();
     clearInterval(node1Timer);
-    const rowsHtml = `
-      <strong>產品：</strong>${escapeHtml(extracted.product_name || "-")}<br>
-      <strong>產地：</strong>${escapeHtml(extracted.origin_country || "未知")} ${extracted.origin_country_en ? `(${escapeHtml(extracted.origin_country_en)})` : ""}<br>
-      <strong>判讀來源：</strong>${escapeHtml(extracted.origin_source || "-")}<br>
-      <strong>信心度：</strong>${escapeHtml(extracted.confidence || "-")}
-    `;
-    setNode(1, "done", `完成 ${elapsed}s`, rowsHtml);
+    const ingredients = extracted.translated_text || extracted.ingredients_raw || "（未讀取到成分）";
+    setNode(1, "done", `完成 ${elapsed}s`, `
+      <strong>成分：</strong><br>
+      <span style="display:block;margin-top:6px;padding:10px;background:rgba(244,236,219,0.04);border-radius:8px;line-height:1.6;">${escapeHtml(ingredients)}</span>
+    `);
   } catch (e) {
     clearInterval(node1Timer);
     setNode(1, "error", "失敗", escapeHtml(e.message));
@@ -1386,22 +1378,10 @@ btnAnalyze.onclick = async () => {
     setNode(2, "error", "失敗", escapeHtml(e.message));
   }
 
-  // ===== NODE 3: 顯示成分（已在 Node 1 一次完成，這裡只顯示結果） =====
-  setNode(3, "running", "整理成分...");
-  await sleep(200);
-  try {
-    translated = await translateIngredients(extracted);
-    setNode(3, "done", "完成", `
-      <strong>原文語言：</strong>${escapeHtml(extracted.language_detected || "-")}<br>
-      <strong>繁中成分：</strong><br>
-      <span style="display:block;margin-top:6px;padding:10px;background:rgba(244,236,219,0.04);border-radius:8px;">${escapeHtml(translated.translated_text || "-")}</span>
-    `);
-  } catch (e) {
-    setNode(3, "error", "失敗", escapeHtml(e.message));
-    translated = { translated_text: "", ingredients_list: [] };
-  }
+  // 保留 translated 供後續（但已在 Node 1 顯示過成分，這裡只取值）
+  translated = { translated_text: extracted.translated_text || "", ingredients_list: extracted.ingredients_list || [] };
 
-  // ===== NODE 4: 豬肉偵測（純 AI 判斷） =====
+  // ===== NODE 4 (顯示為 03): 豬肉偵測（純 AI 判斷） =====
   setNode(4, "running", "判斷豬肉成分...");
   await sleep(250);
   porkInfo = detectPork(extracted.contains_pork, extracted.pork_reason);
