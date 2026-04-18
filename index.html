@@ -1,0 +1,1329 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>豬肉偵測器 · Pork Detector</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;600;900&family=JetBrains+Mono:wght@400;600&family=Bodoni+Moda:ital,wght@0,700;0,900;1,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d0b08;
+    --bg-2: #15110c;
+    --ink: #f4ecdb;
+    --ink-dim: #a89878;
+    --accent: #d4472b;
+    --accent-2: #e8a838;
+    --safe: #6fa86f;
+    --danger: #d4472b;
+    --warn: #e8a838;
+    --line: rgba(244, 236, 219, 0.14);
+    --serif: "Noto Serif TC", "Bodoni Moda", Georgia, serif;
+    --display: "Bodoni Moda", "Noto Serif TC", serif;
+    --mono: "JetBrains Mono", ui-monospace, monospace;
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--serif);
+    min-height: 100vh;
+    overscroll-behavior-y: contain;
+  }
+
+  body {
+    background:
+      radial-gradient(ellipse 80% 50% at 50% 0%, rgba(212, 71, 43, 0.12), transparent 60%),
+      radial-gradient(ellipse 60% 40% at 80% 100%, rgba(232, 168, 56, 0.08), transparent 60%),
+      var(--bg);
+    background-attachment: fixed;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+
+  /* Noise overlay */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.04;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    z-index: 9999;
+  }
+
+  .app {
+    max-width: 560px;
+    margin: 0 auto;
+    padding: 24px 20px 40px;
+    min-height: 100vh;
+    position: relative;
+  }
+
+  /* ===== HEADER ===== */
+  header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 28px;
+  }
+  .logo {
+    font-family: var(--display);
+    font-weight: 900;
+    font-size: 34px;
+    line-height: 0.95;
+    letter-spacing: -0.02em;
+    font-style: italic;
+  }
+  .logo .dot { color: var(--accent); }
+  .sub {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+  }
+  .settings-btn {
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--ink);
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .settings-btn:active { transform: scale(0.92); background: var(--accent); }
+  .settings-btn svg { width: 18px; height: 18px; }
+
+  /* ===== HERO / CAMERA ===== */
+  .hero {
+    margin-bottom: 24px;
+  }
+  .hero-title {
+    font-family: var(--display);
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1.1;
+    margin: 0 0 8px;
+  }
+  .hero-title em {
+    font-style: italic;
+    color: var(--accent-2);
+  }
+  .hero-desc {
+    font-size: 14px;
+    color: var(--ink-dim);
+    line-height: 1.55;
+    margin: 0 0 20px;
+  }
+
+  .capture-card {
+    position: relative;
+    aspect-ratio: 3 / 4;
+    border-radius: 18px;
+    overflow: hidden;
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .capture-card.has-image {
+    border-color: var(--accent);
+  }
+  #preview {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: none;
+  }
+  .capture-card.has-image #preview { display: block; }
+  .capture-placeholder {
+    text-align: center;
+    padding: 24px;
+  }
+  .capture-card.has-image .capture-placeholder { display: none; }
+  .capture-placeholder .ico {
+    font-family: var(--display);
+    font-style: italic;
+    font-size: 72px;
+    line-height: 1;
+    color: var(--accent);
+    margin-bottom: 16px;
+  }
+  .capture-placeholder p {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    color: var(--ink-dim);
+    text-transform: uppercase;
+    margin: 0;
+  }
+
+  /* corner brackets */
+  .capture-card .bracket {
+    position: absolute;
+    width: 22px;
+    height: 22px;
+    border: 2px solid var(--accent);
+  }
+  .capture-card .bracket.tl { top: 12px; left: 12px; border-right: none; border-bottom: none; }
+  .capture-card .bracket.tr { top: 12px; right: 12px; border-left: none; border-bottom: none; }
+  .capture-card .bracket.bl { bottom: 12px; left: 12px; border-right: none; border-top: none; }
+  .capture-card .bracket.br { bottom: 12px; right: 12px; border-left: none; border-top: none; }
+
+  .controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 14px;
+  }
+  .btn {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    padding: 16px 14px;
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--ink);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-weight: 600;
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  .btn.primary:disabled {
+    background: rgba(212, 71, 43, 0.3);
+    border-color: transparent;
+    cursor: not-allowed;
+  }
+  .btn.ghost:active { background: rgba(244, 236, 219, 0.06); }
+  .btn-full { grid-column: 1 / -1; }
+
+  /* ===== PIPELINE / FLOW ===== */
+  .pipeline {
+    margin-top: 28px;
+    display: none;
+  }
+  .pipeline.active { display: block; }
+
+  .pipeline-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 16px;
+  }
+  .pipeline-header h3 {
+    font-family: var(--display);
+    font-style: italic;
+    font-size: 22px;
+    margin: 0;
+    font-weight: 700;
+  }
+  .pipeline-header span {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: var(--ink-dim);
+    text-transform: uppercase;
+  }
+
+  .node {
+    position: relative;
+    padding: 18px 18px 18px 52px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    margin-bottom: 10px;
+    background: rgba(21, 17, 12, 0.6);
+    backdrop-filter: blur(8px);
+    transition: all 0.3s;
+  }
+  .node::before {
+    content: attr(data-num);
+    position: absolute;
+    left: 18px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-family: var(--display);
+    font-size: 20px;
+    font-weight: 900;
+    font-style: italic;
+    color: var(--ink-dim);
+    width: 22px;
+    transition: color 0.3s;
+  }
+  .node.pending { opacity: 0.4; }
+  .node.running {
+    border-color: var(--accent-2);
+    background: rgba(232, 168, 56, 0.06);
+  }
+  .node.running::before { color: var(--accent-2); }
+  .node.done {
+    border-color: rgba(111, 168, 111, 0.4);
+  }
+  .node.done::before { color: var(--safe); }
+  .node.error {
+    border-color: var(--danger);
+    background: rgba(212, 71, 43, 0.08);
+  }
+  .node.error::before { color: var(--danger); }
+
+  .node-title {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: 15px;
+    margin: 0 0 4px;
+  }
+  .node-status {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+  }
+  .node.running .node-status { color: var(--accent-2); }
+  .node.done .node-status { color: var(--safe); }
+  .node.error .node-status { color: var(--danger); }
+
+  .node-result {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--line);
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--ink);
+    display: none;
+  }
+  .node.done .node-result,
+  .node.error .node-result { display: block; }
+
+  /* spinner */
+  .spinner {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border: 2px solid var(--accent-2);
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-right: 6px;
+    vertical-align: -1px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ===== VERDICT ===== */
+  .verdict {
+    margin-top: 24px;
+    padding: 28px 22px;
+    border-radius: 18px;
+    text-align: center;
+    display: none;
+    position: relative;
+    overflow: hidden;
+  }
+  .verdict.active { display: block; }
+  .verdict.safe {
+    background: linear-gradient(135deg, rgba(111, 168, 111, 0.18), rgba(111, 168, 111, 0.04));
+    border: 1px solid rgba(111, 168, 111, 0.4);
+  }
+  .verdict.danger {
+    background: linear-gradient(135deg, rgba(212, 71, 43, 0.2), rgba(212, 71, 43, 0.05));
+    border: 1px solid rgba(212, 71, 43, 0.5);
+  }
+  .verdict.warn {
+    background: linear-gradient(135deg, rgba(232, 168, 56, 0.15), rgba(232, 168, 56, 0.04));
+    border: 1px solid rgba(232, 168, 56, 0.4);
+  }
+  .verdict-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    margin-bottom: 12px;
+  }
+  .verdict-main {
+    font-family: var(--display);
+    font-weight: 900;
+    font-style: italic;
+    font-size: 44px;
+    line-height: 1;
+    margin-bottom: 14px;
+  }
+  .verdict.safe .verdict-main { color: var(--safe); }
+  .verdict.danger .verdict-main { color: var(--danger); }
+  .verdict.warn .verdict-main { color: var(--warn); }
+  .verdict-detail {
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--ink);
+    opacity: 0.9;
+  }
+
+  .ingredient-list {
+    margin-top: 14px;
+    padding: 14px;
+    background: rgba(13, 11, 8, 0.4);
+    border-radius: 10px;
+    text-align: left;
+  }
+  .ingredient-list h4 {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: var(--ink-dim);
+    text-transform: uppercase;
+    margin: 0 0 10px;
+    font-weight: 600;
+  }
+  .ingredient-list ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .ingredient-list li {
+    font-size: 12px;
+    padding: 5px 10px;
+    background: rgba(244, 236, 219, 0.06);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    font-family: var(--mono);
+  }
+  .ingredient-list li.pig {
+    background: rgba(212, 71, 43, 0.2);
+    border-color: var(--accent);
+    color: #fff;
+    font-weight: 600;
+  }
+
+  /* ===== SETTINGS MODAL ===== */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(8px);
+    z-index: 100;
+    display: none;
+    align-items: flex-end;
+    justify-content: center;
+  }
+  .modal-backdrop.active { display: flex; }
+
+  .modal {
+    width: 100%;
+    max-width: 560px;
+    background: var(--bg-2);
+    border-top: 1px solid var(--accent);
+    border-radius: 20px 20px 0 0;
+    padding: 28px 22px calc(28px + env(safe-area-inset-bottom));
+    max-height: 88vh;
+    overflow-y: auto;
+    animation: slideUp 0.3s cubic-bezier(0.2, 0.9, 0.3, 1);
+  }
+  @keyframes slideUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+
+  .modal h2 {
+    font-family: var(--display);
+    font-style: italic;
+    font-size: 26px;
+    margin: 0 0 4px;
+    font-weight: 700;
+  }
+  .modal .tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: var(--ink-dim);
+    text-transform: uppercase;
+    margin-bottom: 22px;
+    display: block;
+  }
+
+  .field {
+    margin-bottom: 18px;
+  }
+  .field label {
+    display: block;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    margin-bottom: 8px;
+    font-weight: 600;
+  }
+  .segmented {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .segmented button {
+    background: transparent;
+    color: var(--ink-dim);
+    border: none;
+    padding: 12px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .segmented button.active {
+    background: var(--accent);
+    color: #fff;
+  }
+
+  .field input, .field select, .field textarea {
+    width: 100%;
+    background: rgba(244, 236, 219, 0.04);
+    border: 1px solid var(--line);
+    color: var(--ink);
+    padding: 13px 14px;
+    border-radius: 10px;
+    font-family: var(--mono);
+    font-size: 13px;
+    outline: none;
+  }
+  .field input:focus, .field select:focus {
+    border-color: var(--accent);
+    background: rgba(212, 71, 43, 0.06);
+  }
+  .field .hint {
+    font-size: 11px;
+    color: var(--ink-dim);
+    margin-top: 6px;
+    line-height: 1.5;
+  }
+  .field .hint a { color: var(--accent-2); }
+
+  .modal-actions {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 10px;
+    margin-top: 10px;
+  }
+
+  /* ===== ZONE INFO ===== */
+  .zone-box {
+    margin-top: 12px;
+    padding: 14px;
+    border-radius: 10px;
+    background: rgba(13, 11, 8, 0.6);
+    border: 1px solid var(--line);
+  }
+  .zone-box.danger {
+    background: rgba(212, 71, 43, 0.12);
+    border-color: var(--accent);
+  }
+  .zone-box.safe {
+    background: rgba(111, 168, 111, 0.1);
+    border-color: rgba(111, 168, 111, 0.4);
+  }
+  .zone-box .country-name {
+    font-family: var(--display);
+    font-weight: 700;
+    font-style: italic;
+    font-size: 22px;
+    margin-bottom: 4px;
+  }
+  .zone-box .zone-tag {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+  .zone-box.danger .zone-tag { color: var(--accent); }
+  .zone-box.safe .zone-tag { color: var(--safe); }
+
+  /* footer */
+  .foot {
+    margin-top: 36px;
+    padding-top: 20px;
+    border-top: 1px solid var(--line);
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: var(--ink-dim);
+    text-align: center;
+    line-height: 1.7;
+  }
+
+  /* file input hidden */
+  .hidden-input { display: none; }
+
+  /* errors */
+  .alert {
+    margin-top: 12px;
+    padding: 12px 14px;
+    background: rgba(212, 71, 43, 0.15);
+    border: 1px solid var(--accent);
+    border-radius: 10px;
+    font-size: 13px;
+    display: none;
+  }
+  .alert.active { display: block; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header>
+    <div>
+      <div class="logo">Pork<span class="dot">.</span>Detect</div>
+      <div class="sub">豬肉 · 非洲豬瘟 · 成分檢測</div>
+    </div>
+    <button class="settings-btn" id="settingsBtn" aria-label="設定">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"></circle>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+      </svg>
+    </button>
+  </header>
+
+  <section class="hero">
+    <h1 class="hero-title">拍下標籤，<em>看穿豬肉</em></h1>
+    <p class="hero-desc">拍攝食品外包裝，AI 將辨識產地國家、核對台灣官方非洲豬瘟疫區清單，並將成分翻譯為繁體中文同時標記豬肉來源。</p>
+
+    <div class="capture-card" id="captureCard">
+      <div class="bracket tl"></div>
+      <div class="bracket tr"></div>
+      <div class="bracket bl"></div>
+      <div class="bracket br"></div>
+      <img id="preview" alt="preview">
+      <div class="capture-placeholder">
+        <div class="ico">Scan</div>
+        <p>尚未拍攝 / 請上傳食品包裝</p>
+      </div>
+    </div>
+
+    <input type="file" accept="image/*" capture="environment" class="hidden-input" id="cameraInput">
+    <input type="file" accept="image/*" class="hidden-input" id="fileInput">
+
+    <div class="controls">
+      <button class="btn ghost" id="btnCamera">開啟相機</button>
+      <button class="btn ghost" id="btnUpload">從相簿選</button>
+      <button class="btn primary btn-full" id="btnAnalyze" disabled>開始分析</button>
+    </div>
+
+    <div class="alert" id="alert"></div>
+  </section>
+
+  <section class="pipeline" id="pipeline">
+    <div class="pipeline-header">
+      <h3>Analysis Flow</h3>
+      <span>graph pipeline</span>
+    </div>
+
+    <div class="node" id="node1" data-num="01">
+      <h4 class="node-title">擷取產品資訊</h4>
+      <div class="node-status">等待中</div>
+      <div class="node-result" id="node1-result"></div>
+    </div>
+
+    <div class="node" id="node2" data-num="02">
+      <h4 class="node-title">查核非洲豬瘟疫區</h4>
+      <div class="node-status">等待中</div>
+      <div class="node-result" id="node2-result"></div>
+    </div>
+
+    <div class="node" id="node3" data-num="03">
+      <h4 class="node-title">翻譯成分為繁中</h4>
+      <div class="node-status">等待中</div>
+      <div class="node-result" id="node3-result"></div>
+    </div>
+
+    <div class="node" id="node4" data-num="04">
+      <h4 class="node-title">檢測豬肉成分</h4>
+      <div class="node-status">等待中</div>
+      <div class="node-result" id="node4-result"></div>
+    </div>
+  </section>
+
+  <section class="verdict" id="verdict">
+    <div class="verdict-label">FINAL VERDICT · 最終判定</div>
+    <div class="verdict-main" id="verdictMain"></div>
+    <div class="verdict-detail" id="verdictDetail"></div>
+    <div id="ingredientBox"></div>
+  </section>
+
+  <div class="foot">
+    本工具為輔助判斷，非官方檢驗報告<br>
+    API 金鑰僅儲存於本次瀏覽分頁 (sessionStorage)<br>
+    疫區清單依台灣農業部防檢署近 3 年發生非洲豬瘟國家資料
+  </div>
+</div>
+
+<!-- SETTINGS MODAL -->
+<div class="modal-backdrop" id="modalBackdrop">
+  <div class="modal">
+    <h2>Settings</h2>
+    <span class="tag">模型設定 · session only</span>
+
+    <div class="field">
+      <label>AI 模型提供者</label>
+      <div class="segmented" id="providerToggle">
+        <button data-v="openai" class="active">OpenAI</button>
+        <button data-v="gemini">Gemini</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>API 金鑰</label>
+      <input type="password" id="apiKey" placeholder="sk-... 或 AIza...">
+      <div class="hint" id="keyHint">
+        OpenAI 金鑰請至 <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com</a> 申請
+      </div>
+    </div>
+
+    <div class="field">
+      <label>模型名稱</label>
+      <input type="text" id="modelName" placeholder="gpt-5.1-mini">
+      <div class="hint" id="modelHint">
+        推薦：OpenAI 使用 <code>gpt-4o</code> 或 <code>gpt-4o-mini</code>；Gemini 使用 <code>gemini-2.5-flash</code> 或 <code>gemini-2.5-pro</code>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn ghost" id="btnCancel">取消</button>
+      <button class="btn primary" id="btnSave">儲存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ===============================================================
+   台灣農業部防檢署 認定「近三年曾發生非洲豬瘟之國家（地區）」
+   資料參考：asf.aphia.gov.tw (2025-12 更新版本)
+   =============================================================== */
+const ASF_COUNTRIES = {
+  // 亞洲
+  "中國": "亞洲", "China": "亞洲", "中国": "亞洲",
+  "香港": "亞洲", "Hong Kong": "亞洲",
+  "越南": "亞洲", "Vietnam": "亞洲", "Viet Nam": "亞洲",
+  "柬埔寨": "亞洲", "Cambodia": "亞洲",
+  "北韓": "亞洲", "朝鮮": "亞洲", "North Korea": "亞洲",
+  "南韓": "亞洲", "韓國": "亞洲", "South Korea": "亞洲", "Korea": "亞洲",
+  "寮國": "亞洲", "Laos": "亞洲",
+  "緬甸": "亞洲", "Myanmar": "亞洲", "Burma": "亞洲",
+  "菲律賓": "亞洲", "Philippines": "亞洲",
+  "東帝汶": "亞洲", "Timor-Leste": "亞洲",
+  "印尼": "亞洲", "Indonesia": "亞洲",
+  "馬來西亞": "亞洲", "Malaysia": "亞洲",
+  "新加坡": "亞洲", "Singapore": "亞洲",
+  "印度": "亞洲", "India": "亞洲",
+  "不丹": "亞洲", "Bhutan": "亞洲",
+  "尼泊爾": "亞洲", "Nepal": "亞洲",
+  "巴基斯坦": "亞洲", "Pakistan": "亞洲",
+  "斯里蘭卡": "亞洲", "Sri Lanka": "亞洲",
+  "泰國": "亞洲", "Thailand": "亞洲",
+  // 歐洲
+  "俄羅斯": "歐洲", "Russia": "歐洲",
+  "烏克蘭": "歐洲", "Ukraine": "歐洲",
+  "白俄羅斯": "歐洲", "Belarus": "歐洲",
+  "波蘭": "歐洲", "Poland": "歐洲",
+  "德國": "歐洲", "Germany": "歐洲",
+  "義大利": "歐洲", "Italy": "歐洲",
+  "匈牙利": "歐洲", "Hungary": "歐洲",
+  "羅馬尼亞": "歐洲", "Romania": "歐洲",
+  "保加利亞": "歐洲", "Bulgaria": "歐洲",
+  "塞爾維亞": "歐洲", "Serbia": "歐洲",
+  "斯洛伐克": "歐洲", "Slovakia": "歐洲",
+  "拉脫維亞": "歐洲", "Latvia": "歐洲",
+  "立陶宛": "歐洲", "Lithuania": "歐洲",
+  "愛沙尼亞": "歐洲", "Estonia": "歐洲",
+  "摩爾多瓦": "歐洲", "Moldova": "歐洲",
+  "北馬其頓": "歐洲", "North Macedonia": "歐洲",
+  "希臘": "歐洲", "Greece": "歐洲",
+  "波士尼亞": "歐洲", "Bosnia": "歐洲",
+  "克羅埃西亞": "歐洲", "Croatia": "歐洲",
+  "捷克": "歐洲", "Czech": "歐洲", "Czechia": "歐洲",
+  "比利時": "歐洲", "Belgium": "歐洲",
+  "蒙特內哥羅": "歐洲", "Montenegro": "歐洲",
+  "科索沃": "歐洲", "Kosovo": "歐洲",
+  "阿爾巴尼亞": "歐洲", "Albania": "歐洲",
+  "瑞典": "歐洲", "Sweden": "歐洲",
+  "西班牙": "歐洲", "Spain": "歐洲",
+  // 非洲
+  "南非": "非洲", "South Africa": "非洲",
+  "奈及利亞": "非洲", "Nigeria": "非洲",
+  "肯亞": "非洲", "Kenya": "非洲",
+  "烏干達": "非洲", "Uganda": "非洲",
+  "坦尚尼亞": "非洲", "Tanzania": "非洲",
+  "安哥拉": "非洲", "Angola": "非洲",
+  "加彭": "非洲", "Gabon": "非洲",
+  "迦納": "非洲", "Ghana": "非洲",
+  "喀麥隆": "非洲", "Cameroon": "非洲",
+  "獅子山": "非洲", "Sierra Leone": "非洲",
+  "塞內加爾": "非洲", "Senegal": "非洲",
+  "莫三比克": "非洲", "Mozambique": "非洲",
+  "尚比亞": "非洲", "Zambia": "非洲",
+  "辛巴威": "非洲", "Zimbabwe": "非洲",
+  "馬達加斯加": "非洲", "Madagascar": "非洲",
+  "模里西斯": "非洲", "Mauritius": "非洲",
+  "貝南": "非洲", "Benin": "非洲",
+  "布吉納法索": "非洲", "Burkina Faso": "非洲",
+  "查德": "非洲", "Chad": "非洲",
+  "象牙海岸": "非洲", "Ivory Coast": "非洲", "Cote d'Ivoire": "非洲",
+  "剛果": "非洲", "Congo": "非洲", "DR Congo": "非洲",
+  "中非": "非洲", "Central African Republic": "非洲",
+  "馬拉威": "非洲", "Malawi": "非洲",
+  "納米比亞": "非洲", "Namibia": "非洲",
+  "賴索托": "非洲", "Lesotho": "非洲",
+  "盧安達": "非洲", "Rwanda": "非洲",
+  "蒲隆地": "非洲", "Burundi": "非洲",
+  "衣索比亞": "非洲", "Ethiopia": "非洲",
+  "索馬利亞": "非洲", "Somalia": "非洲",
+  "厄利垂亞": "非洲", "Eritrea": "非洲",
+  // 美洲
+  "多明尼加": "美洲", "Dominican Republic": "美洲",
+  "海地": "美洲", "Haiti": "美洲",
+};
+
+// 豬肉關鍵字（多語言）
+const PORK_KEYWORDS = [
+  // 中文
+  "豬", "猪", "豚",
+  // 英文
+  "pork", "pig", "swine", "ham", "bacon", "lard", "gelatin", "gelatine",
+  "prosciutto", "pancetta", "salami", "chorizo", "pepperoni", "sausage",
+  "porcine", "hog",
+  // 日文
+  "豚肉", "ポーク", "ベーコン", "ハム", "ソーセージ",
+  // 韓文
+  "돼지", "돼지고기", "베이컨", "햄",
+  // 其他
+  "cerdo", "porc", "schwein", "maiale", "свинина"
+];
+
+/* ===== STATE ===== */
+const state = {
+  provider: sessionStorage.getItem("pd_provider") || "openai",
+  apiKey: sessionStorage.getItem("pd_apikey") || "",
+  model: sessionStorage.getItem("pd_model") || "",
+  imageBase64: null,
+  imageMime: null,
+};
+
+/* ===== UI refs ===== */
+const $ = id => document.getElementById(id);
+const captureCard = $("captureCard");
+const preview = $("preview");
+const btnAnalyze = $("btnAnalyze");
+const alertBox = $("alert");
+const modal = $("modalBackdrop");
+
+/* ===== Settings ===== */
+function defaultModel(provider) {
+  return provider === "openai" ? "gpt-5.1-mini" : "gemma-4-26b-a4b-it";
+}
+function isGemmaModel(modelName) {
+  return /^gemma/i.test(modelName || "");
+}
+function openSettings() {
+  $("apiKey").value = state.apiKey;
+  $("modelName").value = state.model || defaultModel(state.provider);
+  document.querySelectorAll("#providerToggle button").forEach(b => {
+    b.classList.toggle("active", b.dataset.v === state.provider);
+  });
+  updateHints();
+  modal.classList.add("active");
+}
+function closeSettings() { modal.classList.remove("active"); }
+function updateHints() {
+  const p = state.provider;
+  $("keyHint").innerHTML = p === "openai"
+    ? '金鑰格式 <code>sk-...</code>，請至 <a href="https://platform.openai.com/api-keys" target="_blank">platform.openai.com</a> 申請'
+    : '金鑰格式 <code>AIza...</code>，請至 <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a> 申請';
+  $("modelHint").innerHTML = p === "openai"
+    ? '推薦：<code>gpt-5.1-mini</code>（便宜、支援視覺）或 <code>gpt-5.1</code>'
+    : '推薦：<code>gemma-4-26b-a4b-it</code>（免費額度、支援視覺）或 <code>gemini-2.5-flash</code>';
+}
+
+$("settingsBtn").onclick = openSettings;
+$("btnCancel").onclick = closeSettings;
+modal.onclick = (e) => { if (e.target === modal) closeSettings(); };
+
+document.querySelectorAll("#providerToggle button").forEach(b => {
+  b.onclick = () => {
+    state.provider = b.dataset.v;
+    document.querySelectorAll("#providerToggle button").forEach(x => x.classList.remove("active"));
+    b.classList.add("active");
+    $("modelName").value = defaultModel(state.provider);
+    updateHints();
+  };
+});
+
+$("btnSave").onclick = () => {
+  const key = $("apiKey").value.trim();
+  const model = $("modelName").value.trim() || defaultModel(state.provider);
+  if (!key) { alert("請輸入 API 金鑰"); return; }
+  state.apiKey = key;
+  state.model = model;
+  sessionStorage.setItem("pd_provider", state.provider);
+  sessionStorage.setItem("pd_apikey", key);
+  sessionStorage.setItem("pd_model", model);
+  closeSettings();
+};
+
+/* ===== Image capture ===== */
+function readFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function handleFile(file) {
+  if (!file) return;
+  // 壓縮以控制 token 用量
+  const dataUrl = await readFile(file);
+  const compressed = await compressImage(dataUrl);
+  state.imageBase64 = compressed.base64;
+  state.imageMime = "image/jpeg";
+  preview.src = compressed.dataUrl;
+  captureCard.classList.add("has-image");
+  btnAnalyze.disabled = false;
+  // 重置結果
+  $("pipeline").classList.remove("active");
+  $("verdict").classList.remove("active");
+  hideAlert();
+}
+
+function compressImage(dataUrl, maxSize = 1280, quality = 0.85) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+      if (width > maxSize || height > maxSize) {
+        const ratio = Math.min(maxSize / width, maxSize / height);
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, width, height);
+      const out = canvas.toDataURL("image/jpeg", quality);
+      resolve({ dataUrl: out, base64: out.split(",")[1] });
+    };
+    img.src = dataUrl;
+  });
+}
+
+$("btnCamera").onclick = () => $("cameraInput").click();
+$("btnUpload").onclick = () => $("fileInput").click();
+$("cameraInput").onchange = (e) => handleFile(e.target.files[0]);
+$("fileInput").onchange = (e) => handleFile(e.target.files[0]);
+
+/* ===== Alerts ===== */
+function showAlert(msg) {
+  alertBox.textContent = msg;
+  alertBox.classList.add("active");
+}
+function hideAlert() {
+  alertBox.classList.remove("active");
+}
+
+/* ===== Pipeline helpers ===== */
+function setNode(id, status, statusText, resultHtml) {
+  const node = $("node" + id);
+  node.classList.remove("pending", "running", "done", "error");
+  node.classList.add(status);
+  node.querySelector(".node-status").innerHTML =
+    status === "running" ? '<span class="spinner"></span>' + statusText : statusText;
+  if (resultHtml !== undefined) {
+    $("node" + id + "-result").innerHTML = resultHtml;
+  }
+}
+
+function resetPipeline() {
+  for (let i = 1; i <= 4; i++) {
+    setNode(i, "pending", "等待中", "");
+  }
+  $("pipeline").classList.add("active");
+  $("verdict").classList.remove("active");
+}
+
+/* ===== API CALLS ===== */
+
+// 統一 prompt - 第一階段：讀取圖片，取得產地 & 成分原文
+const EXTRACT_PROMPT = `你是食品標籤辨識專家。請仔細觀察這張食品包裝圖片，抽取以下資訊。
+
+必須直接以純 JSON 回應（第一個字元就是 { ，最後一個字元就是 }，中間不要有任何 markdown 語法、不要有 \`\`\`、不要有任何說明文字或前言）：
+
+{
+  "product_name": "產品名稱（原文）",
+  "origin_country": "製造/產地國家（使用繁體中文標準名稱，例如「中國」、「日本」、「美國」、「越南」）",
+  "origin_country_en": "製造/產地國家英文名稱",
+  "origin_source": "你是從圖片哪裡判讀出產地的（例如：Made in... / 產地標示 / 製造商地址）",
+  "ingredients_raw": "成分欄位原文完整文字（保留原語言，不翻譯）",
+  "language_detected": "成分欄位原文是什麼語言",
+  "confidence": "high / medium / low"
+}
+
+若圖片中看不到產地，origin_country 填 "未知"。若看不到成分，ingredients_raw 填 "未標示"。必須回應合法的 JSON 物件，不要加任何 markdown。`;
+
+const TRANSLATE_PROMPT = (ingredientsRaw) => `將以下食品成分表完整翻譯為繁體中文，並拆解成陣列。
+
+必須直接以純 JSON 回應（第一個字元就是 { ，最後一個字元就是 }，中間不要有任何 markdown 語法、不要有 \`\`\`、不要有任何說明文字）：
+
+原文成分：
+"""
+${ingredientsRaw}
+"""
+
+回應格式：
+{
+  "translated_text": "整段成分表翻譯後的繁體中文完整文字",
+  "ingredients_list": ["成分1", "成分2", "成分3"]
+}
+
+注意：
+1. 陣列中每個元素是單一成分
+2. 必須使用繁體中文（台灣用語）
+3. 若原文已是繁中，translated_text 維持原文，但仍需拆成陣列
+4. 必須回應合法的 JSON 物件，不要加任何 markdown`;
+
+async function callOpenAI(messages, wantJson = true) {
+  const model = state.model || "gpt-5.1-mini";
+  const body = {
+    model,
+    messages,
+  };
+  // gpt-5 / gpt-5.1 系列是 reasoning 模型，不支援自訂 temperature，只能用預設 1
+  // 非 reasoning 模型才加 temperature
+  if (!/^(gpt-5|o\d|o1|o3|o4)/i.test(model)) {
+    body.temperature = 0.1;
+  }
+  if (wantJson) body.response_format = { type: "json_object" };
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer " + state.apiKey,
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error("OpenAI API 錯誤: " + res.status + " " + t.slice(0, 200));
+  }
+  const data = await res.json();
+  return data.choices[0].message.content;
+}
+
+async function callGemini(parts, wantJson = true) {
+  const model = state.model || "gemma-4-26b-a4b-it";
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${state.apiKey}`;
+  const body = {
+    contents: [{ parts }],
+    generationConfig: {
+      temperature: 0.1,
+    }
+  };
+  // Gemma 系列不支援 responseMimeType JSON mode，僅 Gemini 支援
+  if (wantJson && !isGemmaModel(model)) {
+    body.generationConfig.responseMimeType = "application/json";
+  }
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error("Gemini/Gemma API 錯誤: " + res.status + " " + t.slice(0, 200));
+  }
+  const data = await res.json();
+  if (!data.candidates || !data.candidates[0]) {
+    throw new Error("模型回應為空: " + JSON.stringify(data).slice(0, 300));
+  }
+  return data.candidates[0].content.parts[0].text;
+}
+
+function parseJson(text) {
+  let t = (text || "").trim();
+  // 移除 markdown code fence
+  if (t.startsWith("```")) {
+    t = t.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "");
+  }
+  // 直接嘗試
+  try { return JSON.parse(t); } catch (e) {}
+  // 抽取第一個 { 到最後一個 } 的區段（Gemma 有時會加說明文字）
+  const first = t.indexOf("{");
+  const last = t.lastIndexOf("}");
+  if (first >= 0 && last > first) {
+    const candidate = t.slice(first, last + 1);
+    try { return JSON.parse(candidate); } catch (e) {}
+  }
+  throw new Error("無法解析 JSON 回應: " + t.slice(0, 200));
+}
+
+async function extractFromImage() {
+  if (state.provider === "openai") {
+    const raw = await callOpenAI([{
+      role: "user",
+      content: [
+        { type: "text", text: EXTRACT_PROMPT },
+        { type: "image_url", image_url: { url: `data:${state.imageMime};base64,${state.imageBase64}` } }
+      ]
+    }]);
+    return parseJson(raw);
+  } else {
+    const raw = await callGemini([
+      { text: EXTRACT_PROMPT },
+      { inline_data: { mime_type: state.imageMime, data: state.imageBase64 } }
+    ]);
+    return parseJson(raw);
+  }
+}
+
+async function translateIngredients(rawText) {
+  if (!rawText || rawText === "未標示") {
+    return { translated_text: "未能讀取成分", ingredients_list: [] };
+  }
+  if (state.provider === "openai") {
+    const raw = await callOpenAI([{
+      role: "user",
+      content: TRANSLATE_PROMPT(rawText)
+    }]);
+    return parseJson(raw);
+  } else {
+    const raw = await callGemini([{ text: TRANSLATE_PROMPT(rawText) }]);
+    return parseJson(raw);
+  }
+}
+
+/* ===== Zone check ===== */
+function checkAsfZone(countryZh, countryEn) {
+  // 先查中文名，再查英文名
+  const candidates = [countryZh, countryEn].filter(Boolean);
+  for (const name of candidates) {
+    if (!name || name === "未知") continue;
+    // 精確比對
+    if (ASF_COUNTRIES[name]) {
+      return { isInfected: true, region: ASF_COUNTRIES[name], matched: name };
+    }
+    // 模糊比對（子字串）
+    for (const key of Object.keys(ASF_COUNTRIES)) {
+      if (name.includes(key) || key.includes(name)) {
+        return { isInfected: true, region: ASF_COUNTRIES[key], matched: key };
+      }
+    }
+  }
+  return { isInfected: false };
+}
+
+/* ===== Pork detect ===== */
+function detectPork(ingredientsList, rawText) {
+  const hits = new Set();
+  const lowerRaw = (rawText || "").toLowerCase();
+  for (const kw of PORK_KEYWORDS) {
+    if (lowerRaw.includes(kw.toLowerCase())) hits.add(kw);
+  }
+  const flagged = [];
+  for (const ing of ingredientsList) {
+    const lower = ing.toLowerCase();
+    for (const kw of PORK_KEYWORDS) {
+      if (lower.includes(kw.toLowerCase())) {
+        flagged.push(ing);
+        break;
+      }
+    }
+  }
+  return { keywordsHit: [...hits], flaggedIngredients: flagged };
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* ===== MAIN ORCHESTRATION ===== */
+btnAnalyze.onclick = async () => {
+  hideAlert();
+  if (!state.apiKey) {
+    showAlert("請先到右上角設定 API 金鑰");
+    openSettings();
+    return;
+  }
+  if (!state.imageBase64) {
+    showAlert("請先拍攝或上傳圖片");
+    return;
+  }
+  btnAnalyze.disabled = true;
+  resetPipeline();
+
+  let extracted, translated, zoneInfo, porkInfo;
+
+  // ===== NODE 1: 擷取 =====
+  setNode(1, "running", "AI 辨識中...");
+  try {
+    extracted = await extractFromImage();
+    const rowsHtml = `
+      <strong>產品：</strong>${escapeHtml(extracted.product_name || "-")}<br>
+      <strong>產地：</strong>${escapeHtml(extracted.origin_country || "未知")} ${extracted.origin_country_en ? `(${escapeHtml(extracted.origin_country_en)})` : ""}<br>
+      <strong>判讀來源：</strong>${escapeHtml(extracted.origin_source || "-")}<br>
+      <strong>信心度：</strong>${escapeHtml(extracted.confidence || "-")}
+    `;
+    setNode(1, "done", "完成", rowsHtml);
+  } catch (e) {
+    setNode(1, "error", "失敗", escapeHtml(e.message));
+    btnAnalyze.disabled = false;
+    return;
+  }
+
+  // ===== NODE 2: 疫區檢查 =====
+  setNode(2, "running", "比對疫區清單...");
+  await sleep(250);
+  try {
+    zoneInfo = checkAsfZone(extracted.origin_country, extracted.origin_country_en);
+    const country = extracted.origin_country || "未知";
+    if (country === "未知") {
+      setNode(2, "done", "產地未明", `
+        <div class="zone-box">
+          <div class="country-name">產地資訊不足</div>
+          <div class="zone-tag">無法判定疫區狀態</div>
+        </div>
+      `);
+    } else if (zoneInfo.isInfected) {
+      setNode(2, "done", "⚠ 疫區", `
+        <div class="zone-box danger">
+          <div class="country-name">${escapeHtml(country)}</div>
+          <div class="zone-tag">台灣認定：${escapeHtml(zoneInfo.region)} 非洲豬瘟疫區</div>
+        </div>
+      `);
+    } else {
+      setNode(2, "done", "非疫區", `
+        <div class="zone-box safe">
+          <div class="country-name">${escapeHtml(country)}</div>
+          <div class="zone-tag">不在台灣認定的近三年非洲豬瘟疫區清單中</div>
+        </div>
+      `);
+    }
+  } catch (e) {
+    setNode(2, "error", "失敗", escapeHtml(e.message));
+  }
+
+  // ===== NODE 3: 翻譯 =====
+  setNode(3, "running", "翻譯成分...");
+  try {
+    translated = await translateIngredients(extracted.ingredients_raw);
+    setNode(3, "done", "完成", `
+      <strong>原文語言：</strong>${escapeHtml(extracted.language_detected || "-")}<br>
+      <strong>繁中翻譯：</strong><br>
+      <span style="display:block;margin-top:6px;padding:10px;background:rgba(244,236,219,0.04);border-radius:8px;">${escapeHtml(translated.translated_text || "-")}</span>
+    `);
+  } catch (e) {
+    setNode(3, "error", "失敗", escapeHtml(e.message));
+    translated = { translated_text: "", ingredients_list: [] };
+  }
+
+  // ===== NODE 4: 豬肉偵測 =====
+  setNode(4, "running", "掃描關鍵字...");
+  await sleep(250);
+  porkInfo = detectPork(
+    translated.ingredients_list || [],
+    (translated.translated_text || "") + " " + (extracted.ingredients_raw || "")
+  );
+  const hasPork = porkInfo.keywordsHit.length > 0 || porkInfo.flaggedIngredients.length > 0;
+  if (hasPork) {
+    setNode(4, "done", "⚠ 檢出豬肉成分",
+      `命中關鍵字：${porkInfo.keywordsHit.map(escapeHtml).join("、")}`);
+  } else {
+    setNode(4, "done", "未檢出豬肉成分", "掃描所有關鍵字均未命中");
+  }
+
+  // ===== VERDICT =====
+  renderVerdict(extracted, zoneInfo, translated, porkInfo, hasPork);
+
+  btnAnalyze.disabled = false;
+};
+
+function renderVerdict(extracted, zoneInfo, translated, porkInfo, hasPork) {
+  const verdictEl = $("verdict");
+  const mainEl = $("verdictMain");
+  const detailEl = $("verdictDetail");
+  const boxEl = $("ingredientBox");
+
+  const inZone = zoneInfo && zoneInfo.isInfected;
+  let level, mainText, detailText;
+
+  if (inZone && hasPork) {
+    level = "danger";
+    mainText = "高風險";
+    detailText = `產地 ${escapeHtml(extracted.origin_country)} 為台灣認定的非洲豬瘟疫區，且成分中偵測到豬肉來源。建議避免食用或攜帶入境。`;
+  } else if (inZone && !hasPork) {
+    level = "warn";
+    mainText = "需留意";
+    detailText = `產地 ${escapeHtml(extracted.origin_country)} 為疫區，但成分中未直接偵測到豬肉。仍請留意交叉污染風險，明膠、油脂等加工品可能含豬源。`;
+  } else if (!inZone && hasPork) {
+    level = "warn";
+    mainText = "含豬肉";
+    detailText = `產地為非疫區，但成分中含有豬肉相關成分。若有飲食禁忌請避免食用。`;
+  } else {
+    level = "safe";
+    mainText = "低風險";
+    detailText = `產地非疫區，且未偵測到豬肉成分。`;
+  }
+
+  verdictEl.className = "verdict active " + level;
+  mainEl.textContent = mainText;
+  detailEl.innerHTML = detailText;
+
+  // 成分清單
+  const list = translated.ingredients_list || [];
+  if (list.length > 0) {
+    const flaggedSet = new Set(porkInfo.flaggedIngredients);
+    boxEl.innerHTML = `
+      <div class="ingredient-list">
+        <h4>成分明細（繁中）</h4>
+        <ul>
+          ${list.map(i => `<li class="${flaggedSet.has(i) ? 'pig' : ''}">${escapeHtml(i)}</li>`).join("")}
+        </ul>
+      </div>
+    `;
+  } else {
+    boxEl.innerHTML = "";
+  }
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+/* ===== 首次啟動提示 ===== */
+window.addEventListener("DOMContentLoaded", () => {
+  if (!state.apiKey) {
+    setTimeout(openSettings, 500);
+  }
+});
+</script>
+</body>
+</html>
