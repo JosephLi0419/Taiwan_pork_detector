@@ -1069,9 +1069,11 @@ async function callOpenAI(messages, wantJson = true) {
   };
   const isReasoning = /^(gpt-5|o\d|o1|o3|o4)/i.test(model);
   if (isReasoning) {
-    // Reasoning 模型：關閉 thinking 以加速（minimal 是最低值）
-    // gpt-5.1 支援 "none"，其他多數支援 "minimal"
-    body.reasoning_effort = "minimal";
+    // Reasoning 模型：關閉 / 最小化 thinking 以加速
+    // - gpt-5.1 / gpt-5.2 等新版：預設就是 "none"，不傳也可以，但保險起見明確設
+    // - 較舊的 gpt-5 / o-series：不支援 "none"，用 "minimal"
+    const supportsNone = /^gpt-5\.[1-9]/i.test(model);
+    body.reasoning_effort = supportsNone ? "none" : "minimal";
   } else {
     // 非 reasoning 模型才加 temperature
     body.temperature = 0.1;
@@ -1137,14 +1139,15 @@ async function callGemini(parts, schema = null) {
     contents: [{ parts }],
     generationConfig: {
       temperature: 0.1,
-      // 關閉 thinking mode 以加速回應
-      // Gemini 2.5 Flash / Pro 預設會 thinking，設為 0 可關閉
-      // Gemma 4 系列也支援此參數
-      thinkingConfig: {
-        thinkingBudget: 0,
-      },
     }
   };
+  // 關閉 thinking 以加速回應
+  // - Gemini 2.5 Flash / Pro 等：用 thinkingConfig.thinkingBudget = 0
+  // - Gemma 4：預設本來就不 thinking（需明確傳 <|think|> 才會開）
+  //   所以 Gemma 不傳 thinkingConfig 以免 API 不認識欄位而報錯
+  if (!isGemmaModel(model)) {
+    body.generationConfig.thinkingConfig = { thinkingBudget: 0 };
+  }
   // Gemma 4 與 Gemini 2.5 皆原生支援結構化 JSON 輸出
   if (schema) {
     body.generationConfig.responseMimeType = "application/json";
