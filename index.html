@@ -1067,9 +1067,13 @@ async function callOpenAI(messages, wantJson = true) {
     model,
     messages,
   };
-  // gpt-5 / gpt-5.1 系列是 reasoning 模型，不支援自訂 temperature，只能用預設 1
-  // 非 reasoning 模型才加 temperature
-  if (!/^(gpt-5|o\d|o1|o3|o4)/i.test(model)) {
+  const isReasoning = /^(gpt-5|o\d|o1|o3|o4)/i.test(model);
+  if (isReasoning) {
+    // Reasoning 模型：關閉 thinking 以加速（minimal 是最低值）
+    // gpt-5.1 支援 "none"，其他多數支援 "minimal"
+    body.reasoning_effort = "minimal";
+  } else {
+    // 非 reasoning 模型才加 temperature
     body.temperature = 0.1;
   }
   if (wantJson) body.response_format = { type: "json_object" };
@@ -1133,6 +1137,12 @@ async function callGemini(parts, schema = null) {
     contents: [{ parts }],
     generationConfig: {
       temperature: 0.1,
+      // 關閉 thinking mode 以加速回應
+      // Gemini 2.5 Flash / Pro 預設會 thinking，設為 0 可關閉
+      // Gemma 4 系列也支援此參數
+      thinkingConfig: {
+        thinkingBudget: 0,
+      },
     }
   };
   // Gemma 4 與 Gemini 2.5 皆原生支援結構化 JSON 輸出
