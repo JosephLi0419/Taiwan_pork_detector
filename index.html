@@ -682,7 +682,7 @@
 
   <section class="hero">
     <h1 class="hero-title">拍下標籤，<em>看穿豬肉</em></h1>
-    <p class="hero-desc">拍攝食品外包裝，AI 將辨識產地國家、核對台灣官方非洲豬瘟疫區清單，並將成分翻譯為繁體中文同時標記豬肉來源。</p>
+    <p class="hero-desc">拍攝食品外包裝，AI 判定是否含豬肉成分，並以你目前所在位置比對台灣非洲豬瘟疫區清單，給出「可攜帶 / 不可攜帶」判定。</p>
 
     <!-- Location Status Bar -->
     <div class="geo-bar" id="geoBar">
@@ -736,7 +736,7 @@
     </div>
 
     <div class="node" id="node2" data-num="02">
-      <h4 class="node-title">查核非洲豬瘟疫區</h4>
+      <h4 class="node-title">查核所在位置疫區</h4>
       <div class="node-status">等待中</div>
       <div class="node-result" id="node2-result"></div>
     </div>
@@ -1353,31 +1353,32 @@ btnAnalyze.onclick = async () => {
     return;
   }
 
-  // ===== NODE 2: 疫區檢查 =====
+  // ===== NODE 2: 位置疫區檢查 =====
   setNode(2, "running", "比對疫區清單...");
   await sleep(250);
   try {
-    zoneInfo = checkAsfZone(extracted.origin_country, extracted.origin_country_en);
-    const country = extracted.origin_country || "未知";
-    if (country === "未知") {
-      setNode(2, "done", "產地未明", `
+    // zoneInfo 保留以供 renderVerdict 使用（但現在用不到了，只是為了向下相容）
+    zoneInfo = state.geoZone || { isInfected: false };
+    const userCountry = state.geoCountry;
+    if (!userCountry) {
+      setNode(2, "done", "定位未取得", `
         <div class="zone-box">
-          <div class="country-name">產地資訊不足</div>
-          <div class="zone-tag">無法判定疫區狀態</div>
+          <div class="country-name">尚未取得定位</div>
+          <div class="zone-tag">請至頁面上方允許定位以判定疫區狀態</div>
         </div>
       `);
     } else if (zoneInfo.isInfected) {
       setNode(2, "done", "⚠ 疫區", `
         <div class="zone-box danger">
-          <div class="country-name">${escapeHtml(country)}</div>
-          <div class="zone-tag">台灣認定：${escapeHtml(zoneInfo.region)} 非洲豬瘟疫區</div>
+          <div class="country-name">${escapeHtml(userCountry)}</div>
+          <div class="zone-tag">你目前所在地為台灣認定 ${escapeHtml(zoneInfo.region || "")} 非洲豬瘟疫區</div>
         </div>
       `);
     } else {
       setNode(2, "done", "非疫區", `
         <div class="zone-box safe">
-          <div class="country-name">${escapeHtml(country)}</div>
-          <div class="zone-tag">不在台灣認定的近三年非洲豬瘟疫區清單中</div>
+          <div class="country-name">${escapeHtml(userCountry)}</div>
+          <div class="zone-tag">你目前所在地不在台灣認定的近三年非洲豬瘟疫區清單中</div>
         </div>
       `);
     }
@@ -1405,15 +1406,14 @@ btnAnalyze.onclick = async () => {
   await sleep(250);
   porkInfo = detectPork(extracted.contains_pork, extracted.pork_reason);
   const hasPork = porkInfo.hasPork;
-  if (hasPork) {
-    const aiNote = extracted.pork_reason ? `<br><strong>AI 判斷依據：</strong>${escapeHtml(extracted.pork_reason)}` : "";
-    setNode(4, "done", "⚠ 檢出豬肉成分",
-      `<strong>偵測來源：</strong>${escapeHtml(porkInfo.source)}${aiNote}`);
-  } else {
-    const reason = extracted.pork_reason ? `（${escapeHtml(extracted.pork_reason)}）` : "";
-    setNode(4, "done", "未檢出豬肉成分",
-      `<strong>AI 判斷：</strong>${escapeHtml(extracted.contains_pork || "n/a")}${reason}`);
-  }
+
+  // 顯示 AI 判斷結果（Yes / No）與理由
+  const aiYesNo = extracted.contains_pork === "yes" ? "Yes"
+                : extracted.contains_pork === "no" ? "No"
+                : "Uncertain";
+  const statusText = hasPork ? "⚠ 檢出豬肉成分" : "未檢出豬肉成分";
+  setNode(4, "done", statusText,
+    `<strong>AI 判斷：</strong>${escapeHtml(aiYesNo)}<br><strong>理由：</strong>${escapeHtml(extracted.pork_reason || "-")}`);
 
   // ===== VERDICT =====
   renderVerdict(extracted, zoneInfo, translated, porkInfo, hasPork);
