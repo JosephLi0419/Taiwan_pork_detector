@@ -742,7 +742,7 @@
     </div>
 
     <div class="node" id="node3" data-num="03">
-      <h4 class="node-title">翻譯成分為繁中</h4>
+      <h4 class="node-title">顯示成分</h4>
       <div class="node-status">等待中</div>
       <div class="node-result" id="node3-result"></div>
     </div>
@@ -776,8 +776,8 @@
     <div class="field">
       <label>AI 模型提供者</label>
       <div class="segmented" id="providerToggle">
-        <button data-v="openai" class="active">OpenAI</button>
-        <button data-v="gemini">Gemini</button>
+        <button data-v="gemini" class="active">Gemini</button>
+        <button data-v="openai">OpenAI</button>
       </div>
     </div>
 
@@ -911,7 +911,7 @@ const PORK_KEYWORDS = [
 
 /* ===== STATE ===== */
 const state = {
-  provider: sessionStorage.getItem("pd_provider") || "openai",
+  provider: sessionStorage.getItem("pd_provider") || "gemini",
   apiKey: sessionStorage.getItem("pd_apikey") || "",
   model: sessionStorage.getItem("pd_model") || "",
   imageBase64: null,
@@ -1322,14 +1322,14 @@ btnAnalyze.onclick = async () => {
     setNode(2, "error", "失敗", escapeHtml(e.message));
   }
 
-  // ===== NODE 3: 翻譯（已在 Node 1 一次完成，這裡只顯示結果） =====
-  setNode(3, "running", "整理翻譯結果...");
+  // ===== NODE 3: 顯示成分（已在 Node 1 一次完成，這裡只顯示結果） =====
+  setNode(3, "running", "整理成分...");
   await sleep(200);
   try {
     translated = await translateIngredients(extracted);
     setNode(3, "done", "完成", `
       <strong>原文語言：</strong>${escapeHtml(extracted.language_detected || "-")}<br>
-      <strong>繁中翻譯：</strong><br>
+      <strong>繁中成分：</strong><br>
       <span style="display:block;margin-top:6px;padding:10px;background:rgba(244,236,219,0.04);border-radius:8px;">${escapeHtml(translated.translated_text || "-")}</span>
     `);
   } catch (e) {
