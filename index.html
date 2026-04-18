@@ -696,7 +696,7 @@
         <div class="geo-label">目前位置</div>
         <div class="geo-value" id="geoValue">尚未取得定位</div>
       </div>
-      <button class="geo-btn" id="geoBtn">定位</button>
+      <button class="geo-btn" id="geoBtn" aria-label="重新定位">重測</button>
     </div>
 
     <div class="capture-card" id="captureCard">
@@ -1095,14 +1095,28 @@ async function callOpenAI(messages, wantJson = true) {
     body.temperature = 0.1;
   }
   if (wantJson) body.response_format = { type: "json_object" };
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": "Bearer " + state.apiKey,
-    },
-    body: JSON.stringify(body),
-  });
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 60000);
+
+  let res;
+  try {
+    res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + state.apiKey,
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (e) {
+    clearTimeout(timer);
+    if (e.name === "AbortError") throw new Error("等待超過 60 秒，請求已中止");
+    throw e;
+  }
+  clearTimeout(timer);
+
   if (!res.ok) {
     const t = await res.text();
     throw new Error("OpenAI API 錯誤: " + res.status + " " + t.slice(0, 200));
@@ -1146,20 +1160,53 @@ async function callGemini(parts, schema = null) {
     body.generationConfig.responseMimeType = "application/json";
     body.generationConfig.responseSchema = schema;
   }
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+
+  // Timeout 60 秒
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 60000);
+
+  let res;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (e) {
+    clearTimeout(timer);
+    if (e.name === "AbortError") {
+      const hint = isGemmaModel(model)
+        ? "（Gemma 4 在 Gemini API 免費版速度不穩，建議改用 gemini-2.5-flash）"
+        : "（可能網路問題或模型過載）";
+      throw new Error("等待超過 60 秒，請求已中止 " + hint);
+    }
+    throw e;
+  }
+  clearTimeout(timer);
+
   if (!res.ok) {
     const t = await res.text();
-    throw new Error("Gemini/Gemma API 錯誤: " + res.status + " " + t.slice(0, 200));
+    let hint = "";
+    if (res.status === 429) hint = "（已達速率上限，請稍候再試）";
+    else if (res.status === 503) hint = "（模型服務暫時過載）";
+    else if (res.status === 400 && isGemmaModel(model)) hint = "（Gemma 可能不支援某些參數，建議改用 gemini-2.5-flash）";
+    throw new Error(`Gemini/Gemma API 錯誤 ${res.status} ${hint}: ${t.slice(0, 150)}`);
   }
   const data = await res.json();
   if (!data.candidates || !data.candidates[0]) {
     throw new Error("模型回應為空: " + JSON.stringify(data).slice(0, 300));
   }
-  return data.candidates[0].content.parts[0].text;
+  // 檢查是否因安全過濾被截斷
+  const finish = data.candidates[0].finishReason;
+  if (finish && finish !== "STOP" && finish !== "MAX_TOKENS") {
+    throw new Error(`模型中止輸出（${finish}），可能被安全過濾器擋下`);
+  }
+  const content = data.candidates[0].content;
+  if (!content || !content.parts || !content.parts[0]) {
+    throw new Error("模型回應格式異常");
+  }
+  return content.parts[0].text;
 }
 
 function parseJson(text) {
@@ -1274,17 +1321,27 @@ btnAnalyze.onclick = async () => {
   let extracted, translated, zoneInfo, porkInfo;
 
   // ===== NODE 1: 擷取 =====
-  setNode(1, "running", "AI 辨識中...");
+  setNode(1, "running", "AI 辨識中... 0s");
+  let elapsed = 0;
+  const node1Timer = setInterval(() => {
+    elapsed++;
+    const hint = elapsed > 40 ? "（建議改用 gemini-2.5-flash）"
+               : elapsed > 20 ? "（模型處理中，請稍候）"
+               : "";
+    setNode(1, "running", `AI 辨識中... ${elapsed}s ${hint}`);
+  }, 1000);
   try {
     extracted = await extractFromImage();
+    clearInterval(node1Timer);
     const rowsHtml = `
       <strong>產品：</strong>${escapeHtml(extracted.product_name || "-")}<br>
       <strong>產地：</strong>${escapeHtml(extracted.origin_country || "未知")} ${extracted.origin_country_en ? `(${escapeHtml(extracted.origin_country_en)})` : ""}<br>
       <strong>判讀來源：</strong>${escapeHtml(extracted.origin_source || "-")}<br>
       <strong>信心度：</strong>${escapeHtml(extracted.confidence || "-")}
     `;
-    setNode(1, "done", "完成", rowsHtml);
+    setNode(1, "done", `完成 (${elapsed}s)`, rowsHtml);
   } catch (e) {
+    clearInterval(node1Timer);
     setNode(1, "error", "失敗", escapeHtml(e.message));
     btnAnalyze.disabled = false;
     return;
@@ -1500,19 +1557,17 @@ async function requestLocation() {
 
 $("geoBtn").onclick = requestLocation;
 
-/* ===== 首次啟動提示 ===== */
+/* ===== 首次啟動 ===== */
 window.addEventListener("DOMContentLoaded", () => {
   if (!state.apiKey) {
     setTimeout(openSettings, 500);
   }
-  // 自動嘗試取得定位（使用者可能需要點擊授權）
+  // 自動在背景跑定位（第一次會彈出授權；之後已授權則直接拿）
   setTimeout(() => {
-    if (navigator.geolocation && navigator.permissions) {
-      navigator.permissions.query({ name: "geolocation" }).then((p) => {
-        if (p.state === "granted") requestLocation();
-      }).catch(() => {});
+    if (navigator.geolocation) {
+      requestLocation();
     }
-  }, 800);
+  }, 600);
 });
 </script>
 </body>
