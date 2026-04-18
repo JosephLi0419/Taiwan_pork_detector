@@ -976,24 +976,19 @@ function resetPipeline() {
 /* ===== API CALLS ===== */
 
 // 統一 prompt - 第一階段：讀取圖片，取得產地 & 成分原文
-const EXTRACT_PROMPT = `分析這張食品包裝圖片，抽取以下資訊：
+const EXTRACT_PROMPT = `分析這張食品包裝圖片，一次抽取並翻譯以下資訊：
 
 1. product_name：產品名稱（原文，不翻譯）
-2. origin_country：製造/產地國家，使用繁體中文標準國名（例如「日本」、「中國」、「美國」、「越南」）。看不到時填「未知」
+2. origin_country：製造/產地國家，用繁體中文標準國名（例如「日本」、「中國」、「美國」、「越南」）。看不到時填「未知」
 3. origin_country_en：產地國家的英文名稱
-4. origin_source：你從圖片哪裡判讀出產地的（如「Made in Japan 標示」、「製造商地址」）
+4. origin_source：你從圖片哪裡判讀出產地（如「Made in Japan 標示」、「製造商地址」）
 5. ingredients_raw：成分欄位的原文完整文字，保留原語言不翻譯。看不到時填「未標示」
 6. language_detected：成分文字是什麼語言
-7. confidence：整體判讀信心度，填 "high"、"medium" 或 "low" 其中之一`;
+7. translated_text：把 ingredients_raw 翻譯成繁體中文（台灣用語）。若原文已是繁中則維持原文
+8. ingredients_list：把成分拆成陣列，每個元素是一個獨立成分（繁體中文）
+9. confidence：整體判讀信心度，填 "high"、"medium" 或 "low" 其中之一
 
-const TRANSLATE_PROMPT = (ingredientsRaw) => `將以下食品成分翻譯為繁體中文（台灣用語），並拆解成陣列：
-
-原文：
-${ingredientsRaw}
-
-要求：
-1. translated_text：整段成分翻譯後的繁體中文完整文字。若原文已是繁中則維持原文
-2. ingredients_list：把成分拆成陣列，每個元素是一個獨立成分`;
+請一次完成所有任務。`;
 
 async function callOpenAI(messages, wantJson = true) {
   const model = state.model || "gpt-5.1-mini";
@@ -1023,7 +1018,7 @@ async function callOpenAI(messages, wantJson = true) {
   return data.choices[0].message.content;
 }
 
-// JSON Schemas for Gemini/Gemma structured output
+// JSON Schema：一次呼叫同時取得識別 + 翻譯結果
 const EXTRACT_SCHEMA = {
   type: "object",
   properties: {
@@ -1033,23 +1028,15 @@ const EXTRACT_SCHEMA = {
     origin_source: { type: "string" },
     ingredients_raw: { type: "string" },
     language_detected: { type: "string" },
-    confidence: { type: "string" }
-  },
-  required: ["product_name", "origin_country", "origin_country_en", "ingredients_raw", "language_detected", "confidence"],
-  propertyOrdering: ["product_name", "origin_country", "origin_country_en", "origin_source", "ingredients_raw", "language_detected", "confidence"]
-};
-
-const TRANSLATE_SCHEMA = {
-  type: "object",
-  properties: {
     translated_text: { type: "string" },
     ingredients_list: {
       type: "array",
       items: { type: "string" }
-    }
+    },
+    confidence: { type: "string" }
   },
-  required: ["translated_text", "ingredients_list"],
-  propertyOrdering: ["translated_text", "ingredients_list"]
+  required: ["product_name", "origin_country", "origin_country_en", "ingredients_raw", "language_detected", "translated_text", "ingredients_list", "confidence"],
+  propertyOrdering: ["product_name", "origin_country", "origin_country_en", "origin_source", "ingredients_raw", "language_detected", "translated_text", "ingredients_list", "confidence"]
 };
 
 async function callGemini(parts, schema = null) {
@@ -1124,20 +1111,12 @@ async function extractFromImage() {
   }
 }
 
-async function translateIngredients(rawText) {
-  if (!rawText || rawText === "未標示") {
-    return { translated_text: "未能讀取成分", ingredients_list: [] };
-  }
-  if (state.provider === "openai") {
-    const raw = await callOpenAI([{
-      role: "user",
-      content: TRANSLATE_PROMPT(rawText)
-    }]);
-    return parseJson(raw);
-  } else {
-    const raw = await callGemini([{ text: TRANSLATE_PROMPT(rawText) }], TRANSLATE_SCHEMA);
-    return parseJson(raw);
-  }
+async function translateIngredients(extracted) {
+  // 已在 extractFromImage 一次完成，直接回傳
+  return {
+    translated_text: extracted.translated_text || "",
+    ingredients_list: extracted.ingredients_list || []
+  };
 }
 
 /* ===== Zone check ===== */
@@ -1250,10 +1229,11 @@ btnAnalyze.onclick = async () => {
     setNode(2, "error", "失敗", escapeHtml(e.message));
   }
 
-  // ===== NODE 3: 翻譯 =====
-  setNode(3, "running", "翻譯成分...");
+  // ===== NODE 3: 翻譯（已在 Node 1 一次完成，這裡只顯示結果） =====
+  setNode(3, "running", "整理翻譯結果...");
+  await sleep(200);
   try {
-    translated = await translateIngredients(extracted.ingredients_raw);
+    translated = await translateIngredients(extracted);
     setNode(3, "done", "完成", `
       <strong>原文語言：</strong>${escapeHtml(extracted.language_detected || "-")}<br>
       <strong>繁中翻譯：</strong><br>
