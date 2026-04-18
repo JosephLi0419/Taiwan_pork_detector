@@ -862,7 +862,7 @@ function updateHints() {
     : '金鑰格式 <code>AIza...</code>，請至 <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a> 申請';
   $("modelHint").innerHTML = p === "openai"
     ? '推薦：<code>gpt-5.1-mini</code>（便宜、支援視覺）或 <code>gpt-5.1</code>'
-    : '推薦：<code>gemma-4-26b-a4b-it</code>（免費額度、支援視覺）或 <code>gemini-2.5-flash</code>';
+    : '推薦：<code>gemma-4-26b-a4b-it</code>（免費額度、原生結構化輸出）或 <code>gemini-2.5-flash</code>';
 }
 
 $("settingsBtn").onclick = openSettings;
@@ -976,42 +976,24 @@ function resetPipeline() {
 /* ===== API CALLS ===== */
 
 // 統一 prompt - 第一階段：讀取圖片，取得產地 & 成分原文
-const EXTRACT_PROMPT = `你是食品標籤辨識專家。請仔細觀察這張食品包裝圖片，抽取以下資訊。
+const EXTRACT_PROMPT = `分析這張食品包裝圖片，抽取以下資訊：
 
-必須直接以純 JSON 回應（第一個字元就是 { ，最後一個字元就是 }，中間不要有任何 markdown 語法、不要有 \`\`\`、不要有任何說明文字或前言）：
+1. product_name：產品名稱（原文，不翻譯）
+2. origin_country：製造/產地國家，使用繁體中文標準國名（例如「日本」、「中國」、「美國」、「越南」）。看不到時填「未知」
+3. origin_country_en：產地國家的英文名稱
+4. origin_source：你從圖片哪裡判讀出產地的（如「Made in Japan 標示」、「製造商地址」）
+5. ingredients_raw：成分欄位的原文完整文字，保留原語言不翻譯。看不到時填「未標示」
+6. language_detected：成分文字是什麼語言
+7. confidence：整體判讀信心度，填 "high"、"medium" 或 "low" 其中之一`;
 
-{
-  "product_name": "產品名稱（原文）",
-  "origin_country": "製造/產地國家（使用繁體中文標準名稱，例如「中國」、「日本」、「美國」、「越南」）",
-  "origin_country_en": "製造/產地國家英文名稱",
-  "origin_source": "你是從圖片哪裡判讀出產地的（例如：Made in... / 產地標示 / 製造商地址）",
-  "ingredients_raw": "成分欄位原文完整文字（保留原語言，不翻譯）",
-  "language_detected": "成分欄位原文是什麼語言",
-  "confidence": "high / medium / low"
-}
+const TRANSLATE_PROMPT = (ingredientsRaw) => `將以下食品成分翻譯為繁體中文（台灣用語），並拆解成陣列：
 
-若圖片中看不到產地，origin_country 填 "未知"。若看不到成分，ingredients_raw 填 "未標示"。必須回應合法的 JSON 物件，不要加任何 markdown。`;
-
-const TRANSLATE_PROMPT = (ingredientsRaw) => `將以下食品成分表完整翻譯為繁體中文，並拆解成陣列。
-
-必須直接以純 JSON 回應（第一個字元就是 { ，最後一個字元就是 }，中間不要有任何 markdown 語法、不要有 \`\`\`、不要有任何說明文字）：
-
-原文成分：
-"""
+原文：
 ${ingredientsRaw}
-"""
 
-回應格式：
-{
-  "translated_text": "整段成分表翻譯後的繁體中文完整文字",
-  "ingredients_list": ["成分1", "成分2", "成分3"]
-}
-
-注意：
-1. 陣列中每個元素是單一成分
-2. 必須使用繁體中文（台灣用語）
-3. 若原文已是繁中，translated_text 維持原文，但仍需拆成陣列
-4. 必須回應合法的 JSON 物件，不要加任何 markdown`;
+要求：
+1. translated_text：整段成分翻譯後的繁體中文完整文字。若原文已是繁中則維持原文
+2. ingredients_list：把成分拆成陣列，每個元素是一個獨立成分`;
 
 async function callOpenAI(messages, wantJson = true) {
   const model = state.model || "gpt-5.1-mini";
@@ -1041,8 +1023,37 @@ async function callOpenAI(messages, wantJson = true) {
   return data.choices[0].message.content;
 }
 
-async function callGemini(parts, wantJson = true) {
-  const model = state.model || "gemma-4-26b-a4b-it";
+// JSON Schemas for Gemini/Gemma structured output
+const EXTRACT_SCHEMA = {
+  type: "object",
+  properties: {
+    product_name: { type: "string" },
+    origin_country: { type: "string" },
+    origin_country_en: { type: "string" },
+    origin_source: { type: "string" },
+    ingredients_raw: { type: "string" },
+    language_detected: { type: "string" },
+    confidence: { type: "string" }
+  },
+  required: ["product_name", "origin_country", "origin_country_en", "ingredients_raw", "language_detected", "confidence"],
+  propertyOrdering: ["product_name", "origin_country", "origin_country_en", "origin_source", "ingredients_raw", "language_detected", "confidence"]
+};
+
+const TRANSLATE_SCHEMA = {
+  type: "object",
+  properties: {
+    translated_text: { type: "string" },
+    ingredients_list: {
+      type: "array",
+      items: { type: "string" }
+    }
+  },
+  required: ["translated_text", "ingredients_list"],
+  propertyOrdering: ["translated_text", "ingredients_list"]
+};
+
+async function callGemini(parts, schema = null) {
+  const model = state.model || "gemini-2.5-flash";
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${state.apiKey}`;
   const body = {
     contents: [{ parts }],
@@ -1050,9 +1061,10 @@ async function callGemini(parts, wantJson = true) {
       temperature: 0.1,
     }
   };
-  // Gemma 系列不支援 responseMimeType JSON mode，僅 Gemini 支援
-  if (wantJson && !isGemmaModel(model)) {
+  // Gemma 4 與 Gemini 2.5 皆原生支援結構化 JSON 輸出
+  if (schema) {
     body.generationConfig.responseMimeType = "application/json";
+    body.generationConfig.responseSchema = schema;
   }
   const res = await fetch(url, {
     method: "POST",
@@ -1078,14 +1090,19 @@ function parseJson(text) {
   }
   // 直接嘗試
   try { return JSON.parse(t); } catch (e) {}
-  // 抽取第一個 { 到最後一個 } 的區段（Gemma 有時會加說明文字）
+  // 抽取第一個 { 到最後一個 } 的區段
   const first = t.indexOf("{");
   const last = t.lastIndexOf("}");
   if (first >= 0 && last > first) {
     const candidate = t.slice(first, last + 1);
     try { return JSON.parse(candidate); } catch (e) {}
   }
-  throw new Error("無法解析 JSON 回應: " + t.slice(0, 200));
+  // 偵測是否為「模型複述規則」的常見徵兆
+  const looksLikeRules = /^[\s\*\-•#]*(Role|Task|Output|Field|Rules|角色|任務|輸出|規則|範本)/im.test(t);
+  const hint = looksLikeRules
+    ? "（模型沒有執行任務，而是複述了規則。建議改用 gemini-2.5-flash 或 gpt-5.1-mini，這兩個模型指令遵從能力較強）"
+    : "（模型回應不是 JSON 格式）";
+  throw new Error("無法解析回應 " + hint + "：" + t.slice(0, 150));
 }
 
 async function extractFromImage() {
@@ -1102,7 +1119,7 @@ async function extractFromImage() {
     const raw = await callGemini([
       { text: EXTRACT_PROMPT },
       { inline_data: { mime_type: state.imageMime, data: state.imageBase64 } }
-    ]);
+    ], EXTRACT_SCHEMA);
     return parseJson(raw);
   }
 }
@@ -1118,7 +1135,7 @@ async function translateIngredients(rawText) {
     }]);
     return parseJson(raw);
   } else {
-    const raw = await callGemini([{ text: TRANSLATE_PROMPT(rawText) }]);
+    const raw = await callGemini([{ text: TRANSLATE_PROMPT(rawText) }], TRANSLATE_SCHEMA);
     return parseJson(raw);
   }
 }
