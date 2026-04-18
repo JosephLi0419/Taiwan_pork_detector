@@ -893,48 +893,6 @@ const ASF_COUNTRIES = {
   "海地": "美洲", "Haiti": "美洲",
 };
 
-// 豬肉關鍵字（多語言 + 別稱 + 製品名）
-const PORK_KEYWORDS = [
-  // 中文 - 直接
-  "豬", "猪", "豚",
-  // 中文 - 部位/製品別稱（不含「豬/豚」字但是豬肉）
-  "里肌", "里脊", "五花肉", "梅花肉", "松阪肉", "松坂肉",
-  "腿庫", "蹄膀", "豬腳", "排骨", "豬肝", "豬心", "豬腸", "大腸",
-  "貢丸", "肉燥", "肉鬆", "肉酥", "香腸", "臘腸", "火腿", "培根",
-  "叉燒", "烤肉", "滷肉", "爌肉", "東坡肉", "獅子頭",
-  "豬油", "板油", "網油",
-  "金華", "宣威",  // 中國名火腿產地
-  // 英文 - 直接
-  "pork", "pig", "swine", "porcine", "hog", "boar",
-  // 英文 - 部位/製品
-  "ham", "bacon", "lard", "gammon", "speck",
-  "prosciutto", "pancetta", "guanciale", "coppa", "capicola",
-  "salami", "chorizo", "pepperoni", "salame", "saucisson",
-  "bratwurst", "kielbasa", "mortadella", "soppressata",
-  "chitterlings", "chitlins", "trotters", "crackling",
-  "pate", "pâté", "rillettes", "headcheese",
-  "morcilla", "blood sausage", "black pudding",
-  "iberico", "jamon", "jamón", "serrano",
-  // 明膠/動物源添加物（可能為豬）
-  "gelatin", "gelatine",
-  // 日文
-  "豚肉", "ポーク", "ベーコン", "ハム", "ソーセージ",
-  "ラード", "チャーシュー", "焼豚", "生ハム", "ロース", "バラ肉",
-  "とんかつ", "豚カツ", "豚骨",
-  // 韓文
-  "돼지", "돼지고기", "베이컨", "햄", "삼겹살", "목살", "순대",
-  // 其他語言
-  "cerdo", "tocino", "jamón",  // 西班牙文
-  "porc", "lardon", "saucisse",  // 法文
-  "schwein", "schinken", "speck", "schmalz",  // 德文
-  "maiale", "pancetta", "prosciutto",  // 義大利文
-  "свинина", "ветчина",  // 俄文
-  "babi",  // 馬來/印尼文
-  "heo", "thịt heo", "thịt lợn",  // 越南文
-  "หมู",  // 泰文
-  "猪肉", "火腿肠", "腊肠",  // 簡體
-];
-
 /* ===== STATE ===== */
 const state = {
   provider: sessionStorage.getItem("pd_provider") || "gemini",
@@ -1316,46 +1274,31 @@ function checkAsfZone(countryZh, countryEn) {
 }
 
 /* ===== Pork detect ===== */
-function detectPork(ingredientsList, rawText, aiVerdict) {
-  const fullText = (rawText || "") + " " + (ingredientsList || []).join(" ");
-
-  // 1. 關鍵字比對
-  const hits = new Set();
-  const lowerFull = fullText.toLowerCase();
-  for (const kw of PORK_KEYWORDS) {
-    if (lowerFull.includes(kw.toLowerCase())) {
-      hits.add(kw);
-    }
-  }
-  const keywordHit = hits.size > 0;
-
-  // 2. 綜合 AI 判斷 + 關鍵字比對
-  // 採保守策略：任一命中就判含豬
+function detectPork(aiVerdict, aiReason) {
+  // 純 AI 判斷
+  // "yes" → 含豬肉
+  // "no" → 不含豬肉
+  // "uncertain" → 保守當作含豬肉（避免漏判）
   let hasPork;
   let source;
-  if (aiVerdict === "yes" && keywordHit) {
-    hasPork = true;
-    source = "AI + 關鍵字雙重命中";
-  } else if (aiVerdict === "yes") {
+  if (aiVerdict === "yes") {
     hasPork = true;
     source = "AI 判定含豬";
-  } else if (keywordHit) {
-    hasPork = true;
-    source = "關鍵字命中: " + [...hits].slice(0, 3).join("、");
+  } else if (aiVerdict === "no") {
+    hasPork = false;
+    source = "AI 判定不含";
   } else if (aiVerdict === "uncertain") {
-    // AI 不確定：保守當作含豬（寧可誤判也不漏判）
     hasPork = true;
-    source = "AI 無法確認（保守標記）";
+    source = "AI 無法確認（保守標記為含豬）";
   } else {
     hasPork = false;
-    source = "無命中";
+    source = "AI 未提供判斷";
   }
-
   return {
     hasPork,
-    keywordsHit: [...hits],
     source,
-    aiVerdict: aiVerdict || "n/a"
+    aiVerdict: aiVerdict || "n/a",
+    aiReason: aiReason || ""
   };
 }
 
@@ -1457,23 +1400,19 @@ btnAnalyze.onclick = async () => {
     translated = { translated_text: "", ingredients_list: [] };
   }
 
-  // ===== NODE 4: 豬肉偵測（Hybrid: AI + 關鍵字 + 否定詞） =====
-  setNode(4, "running", "掃描豬肉成分...");
+  // ===== NODE 4: 豬肉偵測（純 AI 判斷） =====
+  setNode(4, "running", "判斷豬肉成分...");
   await sleep(250);
-  porkInfo = detectPork(
-    translated.ingredients_list || [],
-    (translated.translated_text || "") + " " + (extracted.ingredients_raw || "") + " " + (extracted.product_name || ""),
-    extracted.contains_pork
-  );
+  porkInfo = detectPork(extracted.contains_pork, extracted.pork_reason);
   const hasPork = porkInfo.hasPork;
   if (hasPork) {
     const aiNote = extracted.pork_reason ? `<br><strong>AI 判斷依據：</strong>${escapeHtml(extracted.pork_reason)}` : "";
-    const kwNote = porkInfo.keywordsHit.length > 0 ? `<br><strong>關鍵字命中：</strong>${porkInfo.keywordsHit.slice(0, 5).map(escapeHtml).join("、")}` : "";
     setNode(4, "done", "⚠ 檢出豬肉成分",
-      `<strong>偵測來源：</strong>${escapeHtml(porkInfo.source)}${aiNote}${kwNote}`);
+      `<strong>偵測來源：</strong>${escapeHtml(porkInfo.source)}${aiNote}`);
   } else {
+    const reason = extracted.pork_reason ? `（${escapeHtml(extracted.pork_reason)}）` : "";
     setNode(4, "done", "未檢出豬肉成分",
-      `<strong>AI 判斷：</strong>${escapeHtml(extracted.contains_pork || "n/a")}（${escapeHtml(extracted.pork_reason || "-")}）<br><strong>關鍵字掃描：</strong>無命中`);
+      `<strong>AI 判斷：</strong>${escapeHtml(extracted.contains_pork || "n/a")}${reason}`);
   }
 
   // ===== VERDICT =====
