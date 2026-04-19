@@ -577,6 +577,19 @@
     font-size: 13px;
     outline: none;
   }
+  .field select {
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23a89878' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    padding-right: 40px;
+    cursor: pointer;
+  }
+  .field select option {
+    background: var(--bg-2);
+    color: var(--ink);
+  }
   .field input:focus, .field select:focus {
     border-color: var(--accent);
     background: rgba(212, 71, 43, 0.06);
@@ -777,10 +790,9 @@
 
     <div class="field">
       <label>模型名稱</label>
-      <input type="text" id="modelName" placeholder="gpt-5.1-mini">
-      <div class="hint" id="modelHint">
-        推薦：OpenAI 使用 <code>gpt-4o</code> 或 <code>gpt-4o-mini</code>；Gemini 使用 <code>gemini-2.5-flash</code> 或 <code>gemini-2.5-pro</code>
-      </div>
+      <select id="modelName">
+        <!-- options 由 JS 動態填入 -->
+      </select>
     </div>
 
     <div class="modal-actions">
@@ -902,15 +914,41 @@ const alertBox = $("alert");
 const modal = $("modalBackdrop");
 
 /* ===== Settings ===== */
+// 各提供者可用的模型清單
+const MODEL_OPTIONS = {
+  gemini: [
+    { value: "gemma-4-26b-a4b-it", label: "Gemma 4 26B" },
+    { value: "gemma-4-31b-it", label: "Gemma 4 31B" },
+  ],
+  openai: [
+    { value: "gpt-5.1-mini", label: "GPT-5.1 mini" },
+    { value: "gpt-5.1", label: "GPT-5.1" },
+  ],
+};
+
 function defaultModel(provider) {
-  return provider === "openai" ? "gpt-5.1-mini" : "gemma-4-26b-a4b-it";
+  return MODEL_OPTIONS[provider][0].value;
 }
 function isGemmaModel(modelName) {
   return /^gemma/i.test(modelName || "");
 }
+
+function populateModelSelect(provider) {
+  const select = $("modelName");
+  const opts = MODEL_OPTIONS[provider] || [];
+  select.innerHTML = opts.map(o =>
+    `<option value="${o.value}">${o.label}</option>`
+  ).join("");
+}
+
 function openSettings() {
   $("apiKey").value = state.apiKey;
+  populateModelSelect(state.provider);
   $("modelName").value = state.model || defaultModel(state.provider);
+  // 若 state.model 不在當前 provider 清單中，會 fallback 到第一項
+  if (!MODEL_OPTIONS[state.provider].some(o => o.value === $("modelName").value)) {
+    $("modelName").value = defaultModel(state.provider);
+  }
   document.querySelectorAll("#providerToggle button").forEach(b => {
     b.classList.toggle("active", b.dataset.v === state.provider);
   });
@@ -923,9 +961,6 @@ function updateHints() {
   $("keyHint").innerHTML = p === "openai"
     ? '金鑰格式 <code>sk-...</code>，請至 <a href="https://platform.openai.com/api-keys" target="_blank">platform.openai.com</a> 申請'
     : '金鑰格式 <code>AIza...</code>，請至 <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a> 申請';
-  $("modelHint").innerHTML = p === "openai"
-    ? '推薦：<code>gpt-5.1-mini</code>（便宜、支援視覺）或 <code>gpt-5.1</code>'
-    : '推薦：<code>gemma-4-26b-a4b-it</code>（免費額度、原生結構化輸出）或 <code>gemini-2.5-flash</code>';
 }
 
 $("settingsBtn").onclick = openSettings;
@@ -937,6 +972,7 @@ document.querySelectorAll("#providerToggle button").forEach(b => {
     state.provider = b.dataset.v;
     document.querySelectorAll("#providerToggle button").forEach(x => x.classList.remove("active"));
     b.classList.add("active");
+    populateModelSelect(state.provider);
     $("modelName").value = defaultModel(state.provider);
     updateHints();
   };
@@ -944,7 +980,7 @@ document.querySelectorAll("#providerToggle button").forEach(b => {
 
 $("btnSave").onclick = () => {
   const key = $("apiKey").value.trim();
-  const model = $("modelName").value.trim() || defaultModel(state.provider);
+  const model = $("modelName").value || defaultModel(state.provider);
   if (!key) { alert("請輸入 API 金鑰"); return; }
   state.apiKey = key;
   state.model = model;
