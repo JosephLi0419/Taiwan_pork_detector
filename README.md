@@ -12,7 +12,7 @@
 
 | 判定 | 顏色 | 情境 |
 |---|---|---|
-| 🟢 **可攜帶** | 綠色 | 不含豬肉；或含豬肉但屬高溫滅菌罐頭且你在非疫區 |
+| 🟢 **可攜帶** | 綠色 | 不含豬肉;或含豬肉但屬高溫滅菌罐頭且你在非疫區 |
 | 🟡 **需留意** | 黃色 | 含豬肉 + 非疫區，但屬生鮮/加工肉品（火腿、香腸等）→ 建議主動申報 |
 | 🔴 **不可攜帶** | 紅色 | 含豬肉 + 你目前在非洲豬瘟疫區 → 第 1 次罰 20 萬，第 2 次罰 100 萬 |
 
@@ -25,19 +25,19 @@
    ↓
 [02] 查核疫區    GPS 定位 → 反查國家 → 比對台灣疫區清單
    ↓
-[03] 檢測豬肉    AI 判斷：Yes / No / Uncertain + 理由
+[03] 檢測豬肉    AI 判斷:Yes / No / Uncertain + 理由
    ↓
 [判定]          可攜帶 / 需留意 / 不可攜帶
 ```
 
 ## 🔍 判定依據
 
-根據台灣農業部防檢署《動物傳染病防治條例》與現行規定：
+根據台灣農業部防檢署《動物傳染病防治條例》與現行規定:
 
 ### 疫區國家（一律禁止）
 - 所有豬肉製品都不能帶
 - 即使是罐頭也不行
-- 違規罰鍰：第 1 次 20 萬元，第 2 次以上 100 萬元
+- 違規罰鍰:第 1 次 20 萬元，第 2 次以上 100 萬元
 
 ### 非疫區國家（看類型）
 - ✅ **高溫滅菌罐頭**（金屬罐、玻璃罐、軟式罐頭/retort pouch）→ 可帶
@@ -46,21 +46,26 @@
 
 ## 🤖 支援的 AI 模型
 
-| 提供者 | 推薦模型 | 說明 |
-|---|---|---|
-| **Google** | `gemma-4-26b-a4b-it` | 26B MoE 開源模型，Google AI Studio 免費額度 |
-| **Google** | `gemini-2.5-flash` | 穩定快速，若 Gemma 慢可改用 |
-| **OpenAI** | `gpt-5.1-mini` | Reasoning 模型，支援視覺，便宜 |
-| **OpenAI** | `gpt-5.1` | 更強但更貴 |
+在設定頁面可透過下拉選單切換:
 
-Thinking mode 預設已關閉以加速推理（Gemini 的 `thinkingBudget=0`、OpenAI 的 `reasoning_effort=none`）。
+### Google（Gemini API）
+- `gemma-4-26b-a4b-it` — Gemma 4 26B MoE，開源
+- `gemma-4-31b-it` — Gemma 4 31B Dense，更強但較慢
+
+### OpenAI
+- `gpt-5.1-mini` — 輕量版，速度快、費用低
+- `gpt-5.1` — 完整版，更精準
+
+Thinking mode 預設已關閉以加速推理:
+- Gemini 的 `thinkingConfig.thinkingBudget = 0`
+- OpenAI 的 `reasoning_effort = "none"`
 
 ## 🚀 使用方法
 
 ### 線上版（推薦）
 1. iPhone Safari 打開 [https://josephli0419.github.io/Taiwan_pork_detector/](https://josephli0419.github.io/Taiwan_pork_detector/)
 2. **允許定位權限**（程式會自動取得你目前所在國家）
-3. 右上角齒輪 ⚙️ → 選擇提供者 → 輸入 API 金鑰 → 儲存
+3. 右上角齒輪 ⚙️ → 選擇提供者 → 從下拉選單選模型 → 輸入 API 金鑰 → 儲存
 4. 點「開啟相機」拍食品成分表
 5. 點「開始分析」，等 AI 回應（通常 5–15 秒）
 
@@ -153,6 +158,7 @@ MIT
 - 疫區清單更新
 - UI / UX 改進
 - Prompt 優化讓 AI 判斷更準
+- 模型清單擴充（修改 `MODEL_OPTIONS` 物件）
 
 ---
 
